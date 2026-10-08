@@ -26,3 +26,15 @@ Background digests: [microsites](../digest-ai-microsites-jesse-cunningham.md) ·
 - `data/raw/` — downloaded registry pulls (NDJSON, as-fetched)
 - `data/clean/` — parsed, deduped, city-mapped CSV/JSONL
 - `site/` — static site build (HTML + schema)
+- `VERDICT.md` — 90-day keep/kill protocol + weekly log ritual
+- Live staging: https://jdstager.github.io/texas-electricians-directory/ (weekly auto-rebuild from fresh registry data)
+
+## Ship checklist (human steps)
+1. **Register the EMD** (user, any registrar) — candidates in order:
+   - `texaselectriciansdirectory.com` (primary)
+   - `electriciantexas.com`
+   - `txelectriciansdirectory.com`
+2. **DNS**: CNAME apex→`jdstager.github.io` + `www` CNAME, then `gh api -X POST repos/jdstager/texas-electricians-directory/pages -F cname=<domain>` and add a `CNAME` file step to the build script.
+3. Set up a real inbox for `contact@<domain>` — the methodology page promises a working contact channel; do not publish without it.
+4. After the domain resolves: add Google Search Console property, submit `sitemap.xml`, request indexing for homepage + top 20 city pages.
+5. Stage 2 (rank-and-rent cells) only per Stage-1 evidence — see [recommendation doc](../recommendation-use-both-plays-jesse-cunningham.md).

@@ -7,21 +7,26 @@ Design rules (from the adopted play):
   roll up onto their county page (anti-thin-pages rule).
 - Schema.org JSON-LD on listings (Electrician = LocalBusiness subtype),
   ItemList on city pages, BreadcrumbList everywhere.
-- Every listing links to TDLR's public license search for verification.
+- Every listing links to the state licensing agency's public search for verification.
 - No "best" overclaim in headings: pages say what the data is.
 
 Output: site/dist/
 """
 import csv, hashlib, html, json, re
-from collections import defaultdict, Counter
-from datetime import date
+from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+CONFIG = json.load(open(ROOT / "config/state.json"))
+STATE = CONFIG["postal"]          # "TX"
+STATE_NAME = CONFIG["state_name"] # "Texas"
+TRADE = CONFIG["trade_noun"]      # "Electricians"
 CLEAN = ROOT / "data/clean"
 DIST = ROOT / "site/dist"
 
-SITE_NAME = "Texas Electricians Directory"   # TODO pair with final domain
+SITE_NAME = CONFIG["site_name"]
+TDLR_SEARCH = CONFIG["verify_url"]
+TDLR_LABEL = CONFIG["verify_label"]
 AS_OF = None  # set from coverage_report
 ESCAPE = html.escape
 
@@ -46,11 +51,6 @@ def slugify(s):
     return s or "x"
 
 
-def rel_href(path):
-    parts = path.split("/")
-    return "index.html" if path == "/" else ("../" * (parts.count("/") if parts[-1] == "" else parts.count("/") + 1) + "index.html").replace("//", "/") if False else ("")
-
-
 # depth-aware relative links: pass depth int, compute prefix
 def up(depth):
     return "" if depth == 0 else "../" * depth
@@ -67,11 +67,9 @@ def maps_link(e):
     # Address-string links: the dataset's own geocode column falls back to
     # city centroids on rows whose street geocode failed, which would print
     # a fake-precise pin. Google Maps geocodes the full address at click time.
-    q = "+".join([e["line1"], proper_case(e["city"]).replace(" ", "+"), "TX", e["zip"]])
+    q = "+".join([e["line1"], proper_case(e["city"]).replace(" ", "+"), STATE, e["zip"]])
     return f"https://www.google.com/maps/search/?api=1&query={q}"
 
-
-TDLR_SEARCH = "https://www.tdlr.texas.gov/LicenseSearch/"
 
 PAGE_HEAD = """<!doctype html>
 <html lang="en">
@@ -92,7 +90,7 @@ PAGE_HEAD = """<!doctype html>
 {body}
 </main>
 <footer>
-<p>Sources: Texas Department of Licensing and Regulation public license registry, as of {as_of}. Not affiliated with or endorsed by TDLR. License details listed here are public record; verify any license at <a href="{tdlr}" rel="nofollow">tdlr.texas.gov License Search</a>.</p>
+<p>Sources: {source_name}, as of {as_of}. Not affiliated with or endorsed by the licensing agency. License details listed here are public record; verify any license at <a href="{tdlr}" rel="nofollow">{verify_label}</a>.</p>
 <p><a href="{meth_href}">Ranking methodology</a></p>
 </footer>
 </body>
@@ -105,7 +103,8 @@ def page(title, desc, depth, body, jsonld=""):
         title=ESCAPE(title), desc=ESCAPE(desc), css=d + "static/site.css",
         home=d + "index.html",
         state_href=d + "electricians/index.html", meth_href=d + "methodology/index.html",
-        tdlr=TDLR_SEARCH, as_of=AS_OF, site_name=SITE_NAME, body=body, jsonld=jsonld)
+        tdlr=TDLR_SEARCH, verify_label=TDLR_LABEL, as_of=AS_OF,
+        source_name=CONFIG["source_name"], site_name=SITE_NAME, body=body, jsonld=jsonld)
 
 
 MICRO_CSS = """:root{--ink:#16181d;--mut:#5a5f6b;--line:#e6e8ec;--bg:#fff;--accent:#0b5cad}
@@ -141,6 +140,8 @@ def load():
         e["classes"] = _ast.literal_eval(e["classes"])
         e["lics"] = _ast.literal_eval(e["lics"])
         e["latlon"] = _ast.literal_eval(e["latlon"]) if e["latlon"] else None
+        e["tenure_years"] = float(e.get("tenure_years") or 0)
+        e["enf"] = 1 if str(e.get("enf") or "0").strip() in ("1", "True", "true") else 0
         e["entity_key"] = (
             e["name_norm"] + "::" + e["city"] + "::" + e["line1"]
         )
@@ -154,26 +155,13 @@ def load():
 
 
 def rank_key(e):
-    rank = 0
-    if "Electrical Contractor" in e["classes"]:
-        rank = 3
-    elif "Master Electrician" in e["classes"]:
-        rank = 2
-    elif "Journeyman Electrician" in e["classes"]:
-        rank = 1
-    more = max(rank, *(ELEC_RANK.get(l["class"], 0) for l in e["lics"])) if e["lics"] else rank
-    return (-more, -(len(e["lics"])), 0 if e["phone"] else 1, e["name_norm"])
+    more = max([CLASS_RANK.get(l["class"], 0) for l in e["lics"]], default=0)
+    return (-more, -e["tenure_years"], -(len(e["lics"])), e["enf"], 0 if e["phone"] else 1, e["name_norm"])
 
 
-ELEC_RANK = {"Master Electrician": 3, "Electrical Contractor": 3, "Master Sign Electrician": 2}
+CLASS_RANK = CONFIG["class_rank"]
 
-CLS_BADGE = {
-    "Electrical Contractor": "EC", "Master Electrician": "ME",
-    "Journeyman Electrician": "JE", "Master Sign Electrician": "M-SE",
-    "Journeyman Sign Electrician": "J-SE", "Maintenance Electrician": "MN",
-    "Electrical Sign Contractor": "SC", "Journeyman Industrial Electrician": "J-IE",
-    "Journeyman Lineman Electrician": "JLE",
-}
+CLS_BADGE = CONFIG["class_badge"]
 
 
 def lic_line(l):
@@ -183,16 +171,12 @@ def lic_line(l):
 
 # ---------------------------------------------------------------- pages
 
-def listing_depth(city_slug):
-    return 2
-
-
 def city_body(entities, city, disp, county, depth=2):
     ents = sorted(entities, key=rank_key)
     count = len(ents)
     body = [f'<div class="crumbs"><a href="{up(depth)}index.html">Home</a> › <a href="index.html">All cities</a> › {ESCAPE(disp)}</div>']
-    body.append(f"<h1>Electricians in {ESCAPE(disp)}, TX</h1>")
-    body.append(f'<p class="lede">{count} state-licensed electrical businesses with an address in {ESCAPE(disp)}, Texas, from the TDLR public registry as of {AS_OF}. Licensed by class: {",".join(sorted({CLS_BADGE[l["class"]] for e in ents for l in e["lics"]}))}.</p>')
+    body.append(f"<h1>{TRADE} in {ESCAPE(disp)}, {STATE}</h1>")
+    body.append(f'<p class="lede">{count} state-licensed businesses with an address in {ESCAPE(disp)}, {STATE_NAME}, from the {CONFIG["agency_name"]} public registry as of {AS_OF}. Licensed by class: {",".join(sorted({CLS_BADGE[l["class"]] for e in ents for l in e["lics"]}))}.</p>')
     items = []
     body.append('<ul class="plain">')
     for e in ents:
@@ -200,7 +184,7 @@ def city_body(entities, city, disp, county, depth=2):
         classes = "".join(f'<span class="cls">{CLS_BADGE.get(l["class"], l["class"])}</span>' for l in e["lics"][:4])
         body.append(
             f'<li><a class="name" href="{href}">{ESCAPE(proper_case(e["name"].title() if e["name"].isupper() else e["name"]))}</a>{classes}'
-            f'<br><span class="meta">{ESCAPE(e["line1"])}, {ESCAPE(disp)} TX {ESCAPE(e["zip"])}'
+            f'<br><span class="meta">{ESCAPE(e["line1"])}, {ESCAPE(disp)} {STATE} {ESCAPE(e["zip"])}'
             + (f' · <a href="{fmt_map(e)}" rel="nofollow">map</a>' if True else "")
             + (f' · {fmt_phone(e["phone"])}' if e["phone"] else "")
             + f' · {ESCAPE(lic_line(e["lics"][0]))}</span></li>')
@@ -209,7 +193,7 @@ def city_body(entities, city, disp, county, depth=2):
                       "url": f"electricians/{slugify(city)}/{e['slug']}/"})
     body.append("</ul>")
     body.append(f'<p class="meta">Every licensed electrical business in {ESCAPE(disp)} with an on-file address appears above. See <a href="{up(depth)}methodology/index.html">how this list is built</a>.</p>')
-    ld = {"@context": "https://schema.org", "@type": "ItemList", "name": f"Electricians in {disp}, TX", "numberOfItems": count, "itemListElement": items}
+    ld = {"@context": "https://schema.org", "@type": "ItemList", "name": f"{TRADE} in {disp}, {STATE}", "numberOfItems": count, "itemListElement": items}
     return "\n".join(body), json.dumps(ld)
 
 
@@ -218,6 +202,14 @@ def fmt_map(e):
 
 
 def main():
+    global DIST
+    import shutil
+    # staged build + swap: never rm via shell, never serve a half-written tree
+    staged = ROOT / "site/dist.staged"
+    if staged.exists():
+        shutil.rmtree(staged)
+    staged.mkdir(parents=True, exist_ok=True)
+    DIST = staged
     entities, rep = load()
     DIST.mkdir(parents=True, exist_ok=True)
     (DIST / "static").mkdir(exist_ok=True)
@@ -245,17 +237,17 @@ def main():
                     for c, es in top)
     home_body = f"""
 <h1>{ESCAPE(SITE_NAME)}</h1>
-<p class="lede">Every Texas-licensed electrical business with an on-file business address —
-{total_entities:,} verified listings across {rep['cities']:,} Texas cities, from the
-TDLR public registry as of {AS_OF}. No paid placement, no fake reviews;
+<p class="lede">Every {STATE_NAME}-licensed business with an on-file business address —
+{total_entities:,} verified listings across {rep['cities']:,} {STATE_NAME} cities, from the
+{CONFIG["agency_name"]} public registry as of {AS_OF}. No paid placement, no fake reviews;
 ranked by verifiable license signals only.</p>
 <div class="bigtiles">{tiles}</div>
 <p><a href="electricians/index.html">Browse all {rep['cities']:,} cities →</a> ·
 <a href="methodology/index.html">How this directory is built →</a></p>
 """
     (DIST / "index.html").write_text(page(
-        f"{SITE_NAME} — licensed electricians in {rep['cities']:,} Texas cities",
-        f"Verified directory of {total_entities:,} state-licensed electrical businesses in Texas, from the TDLR registry as of {AS_OF}.",
+        f"{SITE_NAME} — licensed electricians in {rep['cities']:,} {STATE_NAME} cities",
+        f"Verified directory of {total_entities:,} state-licensed electrical businesses in {STATE_NAME}, from the {CONFIG['agency_name']} registry as of {AS_OF}.",
         0, home_body))
 
     # ---------------- state page (all cities by county)
@@ -275,7 +267,7 @@ ranked by verifiable license signals only.</p>
           for cn, lst in sorted(county_cities.items())]
     state_body = f"""
 <div class="crumbs"><a href="{up(1)}index.html">Home</a> › All cities</div>
-<h1>All covered Texas cities</h1>
+<h1>All covered {STATE_NAME} cities</h1>
 <p class="lede">{rep['cities']:,} cities / census-designated places appear in the registry as of {AS_OF}.
 Cities with three or more licensed businesses have their own page; smaller towns are grouped on their county page.</p>
 {''.join(sc)}
@@ -283,7 +275,7 @@ Cities with three or more licensed businesses have their own page; smaller towns
     (DIST / "electricians").mkdir(parents=True, exist_ok=True)
     (DIST / "electricians/index.html").write_text(
         page(f"All cities — {SITE_NAME}",
-             f"Complete city index: licensed electrical businesses by Texas city, from the TDLR registry ({AS_OF}).",
+             f"Complete city index: licensed electrical businesses by {STATE_NAME} city, from the {CONFIG['agency_name']} registry ({AS_OF}).",
              1, state_body))
 
     # ---------------- county rollups for small towns
@@ -303,11 +295,11 @@ Cities with three or more licensed businesses have their own page; smaller towns
                 f'<a href="{up(2)}electricians/index.html">All cities</a></div>'
                 f"<h1>{ESCAPE(proper_case(cn))} County — small towns</h1>"
                 f'<p class="lede">Cities in {ESCAPE(proper_case(cn))} County with fewer than three licensed electrical '
-                f"businesses, from the TDLR registry as of {AS_OF}.</p><ul class='plain'>{''.join(rows)}</ul>")
+                f"businesses, from the {CONFIG['agency_name']} registry as of {AS_OF}.</p><ul class='plain'>{''.join(rows)}</ul>")
         out = DIST / "county" / cslug / "index.html"
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(page(f"{proper_case(cn.title())} County — {SITE_NAME}",
-                            f"Licensed electrical businesses in small-town {proper_case(cn.title())} County, TX ({AS_OF}).",
+                            f"Licensed electrical businesses in small-town {proper_case(cn.title())} County, {STATE} ({AS_OF}).",
                             2, body, ""))
         county_urls.append(f"county/{cslug}/index.html")
 
@@ -320,26 +312,30 @@ Cities with three or more licensed businesses have their own page; smaller towns
 
     def write_entity_page(e, cslug, disp, city_page_exists=True, county=""):
         licbits = ""
-        for l in sorted(e["lics"], key=lambda x: -ELEC_RANK.get(x["class"], 0)):
+        for l in sorted(e["lics"], key=lambda x: -CLASS_RANK.get(x["class"], 0)):
             licbits += f"<li>{ESCAPE(l['class'])} — license #{ESCAPE(l['n'])}, valid through {ESCAPE(l['exp'])}</li>"
         addr = {"@type": "PostalAddress", "streetAddress": e["line1"], "addressLocality": disp,
-                "addressRegion": "TX", "postalCode": e["zip"], "addressCountry": "US"}
+                "addressRegion": STATE, "postalCode": e["zip"], "addressCountry": "US"}
+        tenure = (f'<li><span class="name">Licensed since</span><span class="meta">{e["first_issued"]}</span></li>'
+                  if e.get("first_issued") else "")
+        enf = ('<li><span class="name">Registry enforcement</span><span class="meta">This license is flagged with an enforcement action in the registry — review the record before hiring. The flag is shown for every flagged listing; it is not hidden.</span></li>' if e.get("enf") else "")
         eb_body = f"""
 <div class="crumbs"><a href="{up(3)}index.html">Home</a> ›
 <a href="{up(3)}electricians/index.html">Cities</a> ›
 <a href="{'../../index.html' if city_page_exists else (up(3) + f'county/{slugify(county)}/index.html' if county else up(3) + 'electricians/index.html')}">{ESCAPE(disp)}</a> › {ESCAPE(e["name"])}</div>
 <h1>{ESCAPE(e["name"])}</h1>
-<p class="lede">{ESCAPE(disp)}, TX — {' · '.join(e["classes"])} — Texas license registry as of {AS_OF}.</p>
+<p class="lede">{ESCAPE(disp)}, {STATE} — {' · '.join(e["classes"])} — {CONFIG['agency_name']} registry as of {AS_OF}.</p>
 <ul class="plain">
-<li><span class="name">Address</span><span class="meta">{ESCAPE(e["line1"])}, {ESCAPE(disp)} TX {ESCAPE(e["zip"])} · {ESCAPE(e["county"]) if e["county"] else ""} County
+<li><span class="name">Address</span><span class="meta">{ESCAPE(e["line1"])}, {ESCAPE(disp)} {STATE} {ESCAPE(e["zip"])} · {ESCAPE(e["county"]) if e["county"] else ""} County
  · <a href="{maps_link(e)}" rel="nofollow">open in Google Maps</a></span></li>
 <li><span class="name">Phone</span><span class="meta">{(fmt_phone(e["phone"]) and f'<a href="tel:{e["phone"]}">{fmt_phone(e["phone"])}</a>') or "none on file — verify with the business directly"}</span></li>
+{tenure}{enf}
 <li><span class="name">Licenses on file ({len(e['lics'])})</span><span class="meta"></span><ul>{licbits}</ul></li>
 </ul>
-<p>What this listing is: an extract of the public TDLR license registry for this address
+<p>What this listing is: an extract of the public {CONFIG['agency_name']} license registry for this address
 (license class, number, and current validity). It is not a review, ranking endorsement, or
 recommendation. Before hiring any electrician, you can independently verify each license at
-<a href="{TDLR_SEARCH}" rel="nofollow">TDLR License Search</a> and confirm the permit history with your city.</p>
+<a href="{TDLR_SEARCH}" rel="nofollow">{TDLR_LABEL}</a> and confirm the permit history with your city.</p>
 <p class="meta">Listing changes, corrections, or removal requests: see <a href="{up(3)}methodology/index.html">methodology</a>.</p>
 """
         ld2 = {"@context": "https://schema.org", "@type": "Electrician",
@@ -347,8 +343,8 @@ recommendation. Before hiring any electrician, you can independently verify each
                "telephone": e["phone"] or None}
         out2 = DIST / "electricians" / cslug / e["slug"] / "index.html"
         out2.parent.mkdir(parents=True, exist_ok=True)
-        out2.write_text(page(f'{e["name"]} — electrician in {disp} TX — license {e["lics"][0]["n"]}',
-                             f'{e["name"]}: {", ".join(e["classes"])} — licensed electrician at {e["line1"]}, {disp} TX. Texas license info as of {AS_OF}.',
+        out2.write_text(page(f'{e["name"]} — electrician in {disp} {STATE} — license {e["lics"][0]["n"]}',
+                             f'{e["name"]}: {", ".join(e["classes"])} — licensed electrician at {e["line1"]}, {disp} {STATE}. {STATE_NAME} license info as of {AS_OF}.',
                              3, eb_body,
                              f'<script type="application/ld+json">{json.dumps({k: v for k, v in ld2.items() if v}, ensure_ascii=False)}</script>'))
         urls.append((entity_url(cslug, e), 0.4, "monthly"))
@@ -361,8 +357,8 @@ recommendation. Before hiring any electrician, you can independently verify each
         body, ld = city_body(ents, c, disp, county_of.get(c, ""))
         out = DIST / "electricians" / cslug / "index.html"
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(page(f"Electricians in {disp}, TX ({len(ents)}) — {SITE_NAME}",
-                            f"{len(ents)} state-licensed electrical businesses in {disp}, TX, from the TDLR registry as of {AS_OF}.",
+        out.write_text(page(f"{TRADE} in {disp}, {STATE} ({len(ents)}) — {SITE_NAME}",
+                            f"{len(ents)} state-licensed electrical businesses in {disp}, {STATE}, from the {CONFIG['agency_name']} registry as of {AS_OF}.",
                             2, body,
                             f'<script type="application/ld+json">{ld}</script>'))
         urls.append((f"electricians/{cslug}/index.html", 0.8, "weekly"))
@@ -381,45 +377,40 @@ recommendation. Before hiring any electrician, you can independently verify each
     print("city pages:", n_city_pages, "county rollups:", n_counties_rollup, "entities:", total_entities)
 
     # ---------------- methodology page
+    # config HTML chunks may carry {as_of} {rows} {dropped_no_city} {agency}
+    # placeholders — the single .format() below fills them.
     meth = f"""
 <div class="crumbs"><a href="{up(1)}index.html">Home</a> › Methodology</div>
 <h1>How this directory is built</h1>
-<h2>Source</h2>
-<p>Every listing is extracted from the Texas Department of Licensing and Regulation (TDLR)
-public license registry (published open-licensed copy at data.texas.gov, dataset
-“TDLR – All Licenses”), pulled on {AS_OF}. The dataset covers {rep['stats']['rows_read']:,} rows;
-we keep licenses of these classes:</p>
-<p><strong>Electrical Contractor (EC)</strong> — the business license a company holds to sell electrical work;
-<strong>Master Electrician (ME)</strong> and <strong>Journeyman Electrician (JE)</strong> — individual credentials;
-plus electrical sign/industrial/lineman specialties. Apprentices are excluded (they must work under supervision).</p>
+{CONFIG["methodology_source_html"]}
 <h2>Inclusion rules</h2>
 <ul>
-<li>License must be <strong>currently valid</strong> — expiration date on or after {AS_OF} (expired licenses are dropped).</li>
-<li>Business address must be in Texas and parseable to a city. The registry is a state record;
+<li>License must be <strong>currently valid</strong> — expiration date on or after {AS_OF} (expired, terminated, revoked, or suspended licenses are excluded from listings).</li>
+<li>Business address must be in {STATE_NAME} and parseable to a city. The registry is a state record;
 we list every qualifying business — there is no application, payment, or opt-in to appear.</li>
 <li>Entities: one listing per business (same name + address with several license holders merges, showing every license number).</li>
-<li>Solo masters/journeymen with a business address are included; individual licenses
-without any business address are excluded from city listings (~{rep['stats']['dropped_no_city']:,} licenses — the
-registry is still the verification source of record).</li>
+{CONFIG["methodology_inclusion_extra_html"]}
 </ul>
 <h2>Ordering (no pay, no reviews)</h2>
 <ol>
-<li>License class held: contractor-level businesses, then master electricians, then journeymen.</li>
-<li>Number of active licenses held at that address.</li>
-<li>Telephone number on file (contactable businesses first).</li>
-<li>Alphabetical by name — deterministic.</li>
+{CONFIG["ordering_html"]}
 </ol>
 <p>There is <strong>no paid placement</strong>, no affiliate links, and no user reviews (which would be
 unverifiable on a registry-derived directory). Rankings reflect registry facts only.</p>
 <h2>What this directory is not</h2>
-<p>No endorsement: a listing means “holds an active Texas electrical license at this address,”
-nothing more. Confirm licensing at <a href="{TDLR_SEARCH}" rel="nofollow">TDLR License Search</a>
+<p>No endorsement: a listing means “holds an active {STATE_NAME} electrical license at this address,”
+nothing more. Confirm licensing at <a href="{TDLR_SEARCH}" rel="nofollow">{TDLR_LABEL}</a>
 and permit history with your city building department before hiring.</p>
 <h2>Corrections &amp; removal</h2>
-<p>Registry data is updated on TDLR’s cycle, so listings can lag reality. If a listing is wrong,
+<p>Registry data is updated on {CONFIG["agency_name"]}'s cycle, so listings can lag reality. If a listing is wrong,
 or you are a business that wants out, email the contact address on the homepage — corrections and
 removal requests are honored promptly, no conditions.</p>
 """
+    meth = meth.format(
+        as_of=AS_OF,
+        rows=f"{rep['stats']['rows_read']:,}",
+        dropped_no_city=f"{rep['stats']['dropped_no_city']:,}",
+        agency=CONFIG["agency_name"])
     (DIST / "methodology").mkdir(parents=True, exist_ok=True)
     (DIST / "methodology/index.html").write_text(page(
         f"Methodology — {SITE_NAME}",
@@ -435,7 +426,16 @@ removal requests are honored promptly, no conditions.</p>
 
     n_files = sum(1 for _ in DIST.rglob("index.html"))
     print("total pages:", n_files, "sitemap urls:", len(urls))
-    print("done ->", DIST)
+    # atomic-ish swap: prev -> dist
+    final = ROOT / "site/dist"
+    prev = ROOT / "site/dist.prev"
+    if final.exists():
+        if prev.exists():
+            shutil.rmtree(prev)
+        final.rename(prev)
+    DIST.rename(final)
+    shutil.rmtree(prev, ignore_errors=True)
+    print("done ->", final)
 
 
 if __name__ == "__main__":

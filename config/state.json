@@ -1,0 +1,35 @@
+{
+  "postal": "TX",
+  "state_name": "Texas",
+  "agency_name": "TDLR",
+  "site_name": "Texas Electricians Directory",
+  "trade_noun": "Electricians",
+  "verify_url": "https://www.tdlr.texas.gov/LicenseSearch/",
+  "verify_label": "TDLR License Search",
+  "source_name": "the TDLR public license registry",
+  "class_rank": {
+    "Electrical Contractor": 3,
+    "Master Electrician": 3,
+    "Master Sign Electrician": 2,
+    "Electrical Sign Contractor": 2,
+    "Journeyman Electrician": 1,
+    "Journeyman Sign Electrician": 1,
+    "Maintenance Electrician": 1,
+    "Journeyman Industrial Electrician": 1,
+    "Journeyman Lineman Electrician": 1
+  },
+  "class_badge": {
+    "Electrical Contractor": "EC",
+    "Master Electrician": "ME",
+    "Journeyman Electrician": "JE",
+    "Master Sign Electrician": "M-SE",
+    "Journeyman Sign Electrician": "J-SE",
+    "Maintenance Electrician": "MN",
+    "Electrical Sign Contractor": "SC",
+    "Journeyman Industrial Electrician": "J-IE",
+    "Journeyman Lineman Electrician": "JLE"
+  },
+  "methodology_source_html": "<h2>Source</h2>\n<p>Every listing is extracted from the Texas Department of Licensing and Regulation (TDLR)\npublic license registry (published open-licensed copy at data.texas.gov, dataset\n“TDLR – All Licenses”), pulled on {as_of}. The dataset covers {rows} rows;\nwe keep licenses of these classes:</p>",
+  "methodology_inclusion_extra_html": "<li>Solo masters/journeymen with a business address are included; individual licenses\nwithout any business address are excluded from city listings (~{dropped_no_city} licenses — the\nregistry is still the verification source of record).</li>",
+  "ordering_html": "<li>License class held: contractor-level businesses, then master electricians, then journeymen.</li>\n<li>Number of active licenses held at that address.</li>\n<li>Telephone number on file (contactable businesses first).</li>\n<li>Alphabetical by name — deterministic.</li>"
+}
