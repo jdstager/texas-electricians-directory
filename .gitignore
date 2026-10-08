@@ -1,0 +1,5 @@
+data/raw/
+data/clean/
+site/dist/
+__pycache__/
+verdict-log.md
