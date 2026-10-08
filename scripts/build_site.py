@@ -142,6 +142,7 @@ def load():
         e["latlon"] = _ast.literal_eval(e["latlon"]) if e["latlon"] else None
         e["tenure_years"] = float(e.get("tenure_years") or 0)
         e["enf"] = 1 if str(e.get("enf") or "0").strip() in ("1", "True", "true") else 0
+        e["email"] = (e.get("email") or "").strip()
         e["entity_key"] = (
             e["name_norm"] + "::" + e["city"] + "::" + e["line1"]
         )
@@ -156,7 +157,7 @@ def load():
 
 def rank_key(e):
     more = max([CLASS_RANK.get(l["class"], 0) for l in e["lics"]], default=0)
-    return (-more, -e["tenure_years"], -(len(e["lics"])), e["enf"], 0 if e["phone"] else 1, e["name_norm"])
+    return (-more, -e["tenure_years"], e["enf"], -(len(e["lics"])), 0 if e["phone"] else 1, e["name_norm"])
 
 
 CLASS_RANK = CONFIG["class_rank"]
@@ -225,7 +226,7 @@ def main():
     small = [c for c, es in by_city.items() if 0 < len(es) < 3]
     county_small = defaultdict(list)
     for c in small:
-        county_small[county_of.get(c, "UNMAPPED")].append((c, by_city[c]))
+        county_small[county_of.get(c, "") or "Other towns"].append((c, by_city[c]))
 
     total_entities = len(entities)
     n_city_pages = len(cities_ge3)
@@ -255,7 +256,7 @@ ranked by verifiable license signals only.</p>
     for c in sorted(by_city, key=lambda x: -len(by_city[x])):
         d = proper_case(c)
         n = len(by_city[c])
-        county = county_of.get(c, "UNMAPPED")
+        county = county_of.get(c, "") or "Other towns"
         if n >= 3:
             link = f'<a href="{slugify(c)}/index.html">{d}</a>'
         else:
@@ -329,6 +330,7 @@ Cities with three or more licensed businesses have their own page; smaller towns
 <li><span class="name">Address</span><span class="meta">{ESCAPE(e["line1"])}, {ESCAPE(disp)} {STATE} {ESCAPE(e["zip"])} · {ESCAPE(e["county"]) if e["county"] else ""} County
  · <a href="{maps_link(e)}" rel="nofollow">open in Google Maps</a></span></li>
 <li><span class="name">Phone</span><span class="meta">{(fmt_phone(e["phone"]) and f'<a href="tel:{e["phone"]}">{fmt_phone(e["phone"])}</a>') or "none on file — verify with the business directly"}</span></li>
+{f'<li><span class="name">Registry email</span><span class="meta">{ESCAPE(e["email"])}</span></li>' if CONFIG.get("show_email") and e.get("email") else ""}
 {tenure}{enf}
 <li><span class="name">Licenses on file ({len(e['lics'])})</span><span class="meta"></span><ul>{licbits}</ul></li>
 </ul>
