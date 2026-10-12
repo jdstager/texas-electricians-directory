@@ -38,3 +38,4 @@ Background digests: [microsites](../digest-ai-microsites-jesse-cunningham.md) ·
 3. Set up a real inbox for `contact@<domain>` — the methodology page promises a working contact channel; do not publish without it.
 4. After the domain resolves: add Google Search Console property, submit `sitemap.xml`, request indexing for homepage + top 20 city pages.
 5. Stage 2 (rank-and-rent cells) only per Stage-1 evidence — see [recommendation doc](../recommendation-use-both-plays-jesse-cunningham.md).
+6. **Bing Webmaster Tools** (5 min, free): create at bing.com/webmasters, "import from GSC" or add site texaselectriciansdirectory.com (and the staging host) — send me the verification meta/file token and I place it; this becomes the real indexation instrument for the weekly log.

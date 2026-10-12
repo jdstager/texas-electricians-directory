@@ -38,3 +38,9 @@ postmortem piece (Radar material). Keep = widen: county coverage, sibling state,
 - Domain: pending (user registers, ~$11/yr)
 - Hosting: $0 (GitHub Pages)
 - Data: $0 (public TDLR registry)
+## Probe instrument note (recorded D+3, 2026-10-11)
+Bing's HTML SERP ignores `site:` for bot requests (returns unrelated results) — indexation
+truth moves to **Bing Webmaster Tools** (human step: create account, verify the host property;
+I can place the verification file at the host root immediately). Interim metrics until BWT:
+IndexNow accepted-counts (done: MN 16,121 + TX 11,398) and organic arrivals reported anecdotally.
+AI-citation probes are unchanged (paste 5 queries per engine).
