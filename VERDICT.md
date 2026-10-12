@@ -1,6 +1,6 @@
 # 90-day verdict protocol — Texas Electricians Directory
 
-Publish-day anchor: **D0 = first successful Pages deploy** (record in this file).
+Publish-day anchor: **D0 = 2026-10-08** (first Pages deploy; first scheduled CI rebuild succeeded 2026-10-08 18:54 UTC).
 Custom EMD goes live after user registers it → move site to apex, then D0 restarts ONLY if
 the domain changes (Google treats the custom domain as the canonical property).
 
