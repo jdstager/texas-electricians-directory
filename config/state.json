@@ -33,8 +33,8 @@
   "methodology_inclusion_extra_html": "<li>Solo masters/journeymen with a business address are included; individual licenses\nwithout any business address are excluded from city listings (~{dropped_no_city} licenses — the\nregistry is still the verification source of record).</li>",
   "ordering_html": "<li>License class held: contractor-level businesses, then master electricians, then journeymen.</li>\n<li>Number of active licenses held at that address.</li>\n<li>Telephone number on file (contactable businesses first).</li>\n<li>Alphabetical by name — deterministic.</li>",
   "indexnow_host": "jdstager.github.io",
-  "indexnow_key": "005ba376519de348911c3b28c99e1a40",
-  "indexnow_key_location": "https://jdstager.github.io/005ba376519de348911c3b28c99e1a40.txt",
+  "indexnow_key": "aa96358da4514f9c922b876ebb75dcc3",
+  "indexnow_key_location": "https://jdstager.github.io/txdir-indexnow-key.txt",
   "canonical_base": "https://jdstager.github.io/texas-electricians-directory",
   "d0": "2026-10-08"
 }
