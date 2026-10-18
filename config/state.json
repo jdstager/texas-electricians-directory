@@ -38,5 +38,6 @@
   "canonical_base": "https://jdstager.github.io/texas-electricians-directory",
   "d0": "2026-10-08",
   "claims_enabled": false,
-  "contact_email": ""
+  "contact_email": "",
+  "custom_domain": "texaselectriciansdirectory.com"
 }
