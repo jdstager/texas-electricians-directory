@@ -3,7 +3,7 @@
 import json, re, urllib.request
 from pathlib import Path
 
-BASE = "https://jdstager.github.io/texas-electricians-directory"
+BASE = "https://texaselectriciansdirectory.com"
 NAME = "Texas Electricians Directory"
 
 def get(u):
