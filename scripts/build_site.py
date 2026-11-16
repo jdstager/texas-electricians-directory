@@ -467,7 +467,13 @@ removal requests are honored promptly, no conditions.</p>
 
     # ---------------- sitemap + robots
     sm = ['<?xml version="1.0" encoding="UTF-8"?>', '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
-    sm += [f"<url><loc>{CANON}/{u}</loc><lastmod>{TODAY.ISO if False else str(date.today())}</lastmod><changefreq>{f}</changefreq><priority>{p}</priority></url>" for u, p, f in urls]
+    def _clean(u):
+        if u == "index.html":
+            return CANON + "/"
+        if u.endswith("/index.html"):
+            return CANON + "/" + u[:-len("index.html")]
+        return CANON + "/" + u
+    sm += [f"<url><loc>{_clean(u)}</loc><lastmod>{TODAY.ISO if False else str(date.today())}</lastmod><changefreq>{f}</changefreq><priority>{p}</priority></url>" for u, p, f in urls]
     sm.append("</urlset>")
     (DIST / "sitemap.xml").write_text("\n".join(sm))
     (DIST / "robots.txt").write_text("User-agent: *\nAllow: /\nSitemap: " + CANON + "/sitemap.xml\n")
